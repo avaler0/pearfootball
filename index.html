@@ -2,25 +2,65 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>P2P 2-Player Game</title>
+  <title>P2P Game</title>
   <style>
     body {
-      margin: 0; 
-      background: #222;
+      margin: 0;
+      background: #111;
       color: white;
       font-family: sans-serif;
-      user-select: none;
     }
+
     canvas {
       display: block;
-      margin: 20px auto;
-      background: #222;
-      border: 2px solid #555;
+      margin: 0 auto;
+      background: black;
+    }
+
+    #menu {
+      text-align: center;
+      padding: 20px;
+    }
+
+    #menu input {
+      padding: 6px;
+      font-size: 14px;
+      width: 300px;
+      max-width: 80%;
+    }
+
+    #menu button {
+      margin: 10px;
+      padding: 10px 20px;
+      font-size: 16px;
+    }
+
+    #gameKeyDisplay, #gameKey {
+      text-align: center;
+      margin-top: 10px;
+      font-size: 14px;
+      color: lime;
+      user-select: all;
+      cursor: pointer;
+    }
+
+    #gameKey:hover {
+      text-decoration: underline;
     }
   </style>
 </head>
 <body>
+  <div id="menu">
+    <button id="createBtn">Create Game</button>
+    <br />
+    <input id="joinKeyInput" placeholder="Enter game key to join" />
+    <button id="joinBtn">Join Game</button>
+    <div id="gameKeyDisplay"></div>
+  </div>
+
   <canvas id="gameCanvas" width="800" height="600"></canvas>
-  <script type="module" src="app.js"></script>
+  <div id="gameKey" title="Click to copy game key"></div>
+
+  <script type="module" src="./app.js"></script>
 </body>
 </html>

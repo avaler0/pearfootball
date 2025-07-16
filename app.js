@@ -1,25 +1,96 @@
-import { send } from './swarm.js'
+import { send, joinSwarm } from './swarm.js'
+import crypto from 'hypercore-crypto'
+import b4a from 'b4a'
 
 const canvas = document.getElementById("gameCanvas")
 const ctx = canvas.getContext("2d")
+const menu = document.getElementById("menu")
+const gameKeyDisplay = document.getElementById("gameKeyDisplay")
+const gameKeyElement = document.getElementById("gameKey")
+const BASE_SPEED = 1
+const BOOST_MULTIPLIER = 4
+const boosterImg = new Image()
+boosterImg.src = './pear.svg'  // path relative to index.html or your server root
+const player1Img = new Image()
+player1Img.src = './player1.png'
 
-const isHost = confirm("Host the game? OK = Host, Cancel = Join")
+const player2Img = new Image()
+player2Img.src = './player2.png'
+
+
+let isHost = false
 let remoteKeyState = {}
 
 window.receivePeerMessage = (msg) => {
-  if (isHost) {
-    remoteKeyState = msg
-  } else {
-    player1 = msg.p1
-    player2 = msg.p2
-    ball = msg.ball
+    if (isHost) {
+      remoteKeyState = msg
+    } else {
+      player1 = msg.p1
+      player2 = msg.p2
+      ball = msg.ball
+      powerUp = msg.powerUp || null
+      speedBoost = msg.speedBoost || {
+        p1: { active: false, endTime: 0 },
+        p2: { active: false, endTime: 0 }
+      }
+    }
+  }
+
+function hex(buf) {
+  return b4a.toString(buf, 'hex')
+}
+
+function bufferFromHex(str) {
+  return b4a.from(str, 'hex')
+}
+
+document.getElementById("createBtn").onclick = async () => {
+  const topicBuffer = crypto.randomBytes(32)
+  isHost = true
+  await joinSwarm(topicBuffer)
+  menu.style.display = "none"
+  const topicHex = hex(topicBuffer)
+  gameKeyElement.innerText = `Game Key: ${topicHex}`
+  gameKeyElement.onclick = () => {
+    navigator.clipboard.writeText(topicHex)
+    gameKeyElement.innerText = `Copied! ${topicHex}`
+    setTimeout(() => {
+      gameKeyElement.innerText = `Game Key: ${topicHex}`
+    }, 1500)
+  }
+  scheduleNextPowerUp()
+  loop()
+}
+
+document.getElementById("joinBtn").onclick = async () => {
+  const input = document.getElementById("joinKeyInput").value.trim()
+  if (!input) {
+    gameKeyDisplay.textContent = "Please enter a game key."
+    return
+  }
+  try {
+    const topicBuffer = bufferFromHex(input)
+    await joinSwarm(topicBuffer)
+    menu.style.display = "none"
+    gameKeyDisplay.textContent = ""
+    gameKeyElement.innerText = "" // don't show key for joiners
+    loop()
+  } catch {
+    gameKeyDisplay.textContent = "Invalid game key format."
   }
 }
 
-// Game state
 let player1 = { x: 100, y: 100, w: 20, h: 20, score: 0 }
 let player2 = { x: 680, y: 400, w: 20, h: 20, score: 0 }
 let ball = { x: 395, y: 295, r: 8, vx: 0, vy: 0 }
+let powerUp = null
+let powerUpTimeout = null
+let nextPowerUpDelay = 0
+
+let speedBoost = {
+  p1: { active: false, endTime: 0 },
+  p2: { active: false, endTime: 0 }
+}
 
 const goalWidth = 10
 const goalHeight = 150
@@ -45,80 +116,81 @@ function resetBall() {
   ball.vy = 0
 }
 
+function scheduleNextPowerUp() {
+    const delay = 10000 + Math.random() * 15000 // 10–25 sec
+    nextPowerUpDelay = Date.now() + delay
+  }
+  
+  function applySpeedBoost(playerKey) {
+    speedBoost[playerKey].active = true
+    speedBoost[playerKey].endTime = Date.now() + 10000 // 30 sec
+    powerUp = null
+    clearTimeout(powerUpTimeout)
+    scheduleNextPowerUp()
+  }
+
 function kickBall(player) {
   const dx = ball.x - (player.x + player.w / 2)
   const dy = ball.y - (player.y + player.h / 2)
   const dist = Math.sqrt(dx * dx + dy * dy) || 1
   const speed = 5
-
   ball.vx = (dx / dist) * speed
   ball.vy = (dy / dist) * speed
 }
 
 function update() {
   if (isHost) {
-    // Host controls Player 1
     if (keys.ArrowUp) player1.y -= 3
     if (keys.ArrowDown) player1.y += 3
     if (keys.ArrowLeft) player1.x -= 3
     if (keys.ArrowRight) player1.x += 3
 
-    // Remote controls Player 2
     if (remoteKeyState.ArrowUp) player2.y -= 3
     if (remoteKeyState.ArrowDown) player2.y += 3
     if (remoteKeyState.ArrowLeft) player2.x -= 3
     if (remoteKeyState.ArrowRight) player2.x += 3
 
-    // Move ball
+    // Clamp player positions within canvas bounds
+    function clampPlayer(p) {
+    p.x = Math.max(0, Math.min(canvas.width - p.w, p.x))
+    p.y = Math.max(0, Math.min(canvas.height - p.h, p.y))
+    }
+  
+    clampPlayer(player1)
+    clampPlayer(player2)
+
     if (ball.vx !== 0 || ball.vy !== 0) {
       ball.x += ball.vx
       ball.y += ball.vy
-
-      // Friction
-      const friction = 0.95
-      ball.vx *= friction
-      ball.vy *= friction
-
+      ball.vx *= 0.95
+      ball.vy *= 0.95
       if (Math.abs(ball.vx) < 0.1) ball.vx = 0
       if (Math.abs(ball.vy) < 0.1) ball.vy = 0
-
-      // Keep ball inside canvas
-      if (ball.x - ball.r < 0) {
-        ball.x = ball.r
-        ball.vx = 0
-      }
-      if (ball.x + ball.r > canvas.width) {
-        ball.x = canvas.width - ball.r
-        ball.vx = 0
-      }
-      if (ball.y - ball.r < 0) {
-        ball.y = ball.r
-        ball.vy = 0
-      }
-      if (ball.y + ball.r > canvas.height) {
-        ball.y = canvas.height - ball.r
-        ball.vy = 0
-      }
     }
 
-    function ballHitsPlayer(player) {
+    // Bounce the ball off the pitch boundaries
+    if (ball.x - ball.r < 0 || ball.x + ball.r > canvas.width) {
+    ball.vx *= -1
+    ball.x = Math.max(ball.r, Math.min(canvas.width - ball.r, ball.x))
+    }
+  
+    if (ball.y - ball.r < 0 || ball.y + ball.r > canvas.height) {
+    ball.vy *= -1
+    ball.y = Math.max(ball.r, Math.min(canvas.height - ball.r, ball.y))
+    }
+
+    function ballHits(p) {
       return (
-        ball.x + ball.r > player.x &&
-        ball.x - ball.r < player.x + player.w &&
-        ball.y + ball.r > player.y &&
-        ball.y - ball.r < player.y + player.h
+        ball.x + ball.r > p.x &&
+        ball.x - ball.r < p.x + p.w &&
+        ball.y + ball.r > p.y &&
+        ball.y - ball.r < p.y + p.h
       )
     }
 
-    if (ballHitsPlayer(player1)) {
-      kickBall(player1)
-    }
+    if (ballHits(player1)) kickBall(player1)
+    if (ballHits(player2)) kickBall(player2)
 
-    if (ballHitsPlayer(player2)) {
-      kickBall(player2)
-    }
-
-    // Goal detection
     if (
       ball.x - ball.r <= leftGoal.x + leftGoal.w &&
       ball.y >= leftGoal.y &&
@@ -137,45 +209,101 @@ function update() {
       resetBall()
     }
 
-    // Send state to client
     send({
-      p1: player1,
-      p2: player2,
-      ball: ball
-    })
+        p1: player1,
+        p2: player2,
+        ball,
+        powerUp,
+        speedBoost
+      })
   } else {
-    // Send input to host
-    send({
-      ArrowUp: keys.ArrowUp,
-      ArrowDown: keys.ArrowDown,
-      ArrowLeft: keys.ArrowLeft,
-      ArrowRight: keys.ArrowRight
-    })
+    send(keys)
   }
+  // 1. Handle power-up spawn timer
+if (!powerUp && Date.now() > nextPowerUpDelay) {
+    powerUp = {
+      x: Math.random() * (canvas.width - 20) + 10,
+      y: Math.random() * (canvas.height - 20) + 10,
+      r: 10
+    }
+  
+    // Remove power-up after 10 seconds if not picked up
+    powerUpTimeout = setTimeout(() => {
+      powerUp = null
+      scheduleNextPowerUp()
+    }, 10000)
+  }
+  
+  // 2. Handle pickup detection
+  function touchesPowerUp(p) {
+    return (
+      powerUp &&
+      p.x < powerUp.x + powerUp.r &&
+      p.x + p.w > powerUp.x - powerUp.r &&
+      p.y < powerUp.y + powerUp.r &&
+      p.y + p.h > powerUp.y - powerUp.r
+    )
+  }
+  
+  if (powerUp) {
+    if (touchesPowerUp(player1)) {
+      applySpeedBoost('p1')
+    } else if (touchesPowerUp(player2)) {
+      applySpeedBoost('p2')
+    }
+  }
+  
+  // 3. Adjust player speed
+    let p1Speed = speedBoost.p1.active ? BASE_SPEED * BOOST_MULTIPLIER : BASE_SPEED
+    let p2Speed = speedBoost.p2.active ? BASE_SPEED * BOOST_MULTIPLIER : BASE_SPEED
+  
+  if (keys.ArrowUp) player1.y -= p1Speed
+  if (keys.ArrowDown) player1.y += p1Speed
+  if (keys.ArrowLeft) player1.x -= p1Speed
+  if (keys.ArrowRight) player1.x += p1Speed
+  
+  if (remoteKeyState.ArrowUp) player2.y -= p2Speed
+  if (remoteKeyState.ArrowDown) player2.y += p2Speed
+  if (remoteKeyState.ArrowLeft) player2.x -= p2Speed
+  if (remoteKeyState.ArrowRight) player2.x += p2Speed
+  
+  // 4. Expire old boosts
+  const now = Date.now()
+  if (speedBoost.p1.active && now > speedBoost.p1.endTime) speedBoost.p1.active = false
+  if (speedBoost.p2.active && now > speedBoost.p2.endTime) speedBoost.p2.active = false
 }
 
 function draw() {
   ctx.clearRect(0, 0, canvas.width, canvas.height)
 
-  // Draw goals
   ctx.fillStyle = "#f00"
   ctx.fillRect(leftGoal.x, leftGoal.y, leftGoal.w, leftGoal.h)
   ctx.fillRect(rightGoal.x, rightGoal.y, rightGoal.w, rightGoal.h)
 
-  // Draw players
-  ctx.fillStyle = "#0f0"
-  ctx.fillRect(player1.x, player1.y, player1.w, player1.h)
+  if (player1Img.complete) {
+    ctx.drawImage(player1Img, player1.x, player1.y, player1.w, player1.h)
+  } else {
+    ctx.fillStyle = "#0f0"
+    ctx.fillRect(player1.x, player1.y, player1.w, player1.h)
+  }
+  
+  if (player2Img.complete) {
+    ctx.drawImage(player2Img, player2.x, player2.y, player2.w, player2.h)
+  } else {
+    ctx.fillStyle = "#00f"
+    ctx.fillRect(player2.x, player2.y, player2.w, player2.h)
+  }
 
-  ctx.fillStyle = "#00f"
-  ctx.fillRect(player2.x, player2.y, player2.w, player2.h)
-
-  // Draw ball
   ctx.fillStyle = "#fff"
   ctx.beginPath()
   ctx.arc(ball.x, ball.y, ball.r, 0, Math.PI * 2)
   ctx.fill()
 
-  // Draw scores
+  if (powerUp && boosterImg.complete) {
+    const size = powerUp.r * 2
+    ctx.drawImage(boosterImg, powerUp.x - size/2, powerUp.y - size/2, size, size)
+  }
+
   ctx.fillStyle = "#fff"
   ctx.font = "16px sans-serif"
   ctx.fillText(`P1: ${player1.score}`, 20, 20)
@@ -187,5 +315,3 @@ function loop() {
   draw()
   requestAnimationFrame(loop)
 }
-
-loop()
