@@ -22,19 +22,41 @@ let isHost = false
 let remoteKeyState = {}
 
 window.receivePeerMessage = (msg) => {
-    if (isHost) {
-      remoteKeyState = msg
-    } else {
-      player1 = msg.p1
-      player2 = msg.p2
-      ball = msg.ball
-      powerUp = msg.powerUp || null
-      speedBoost = msg.speedBoost || {
-        p1: { active: false, endTime: 0 },
-        p2: { active: false, endTime: 0 }
-      }
-    }
+  // Host logic: receive remote input
+  if (isHost && msg.ArrowUp !== undefined) {
+    remoteKeyState = msg;
+    return;
   }
+
+  // Common game logic
+  switch (msg.type) {
+    case 'player-ready':
+      opponentReady = true;
+      checkStartConditions();
+      break;
+
+    case 'game-over':
+      statusMsg.innerText = 'Game Over';
+      enablePlayerMovement = false;
+      gameStarted = false;
+      document.getElementById('match-timer').innerText = '';
+      break;
+
+    default:
+      // Sync state from host if not host
+      if (!isHost && msg.p1 && msg.p2 && msg.ball) {
+        player1 = msg.p1;
+        player2 = msg.p2;
+        ball = msg.ball;
+        powerUp = msg.powerUp || null;
+        speedBoost = msg.speedBoost || {
+          p1: { active: false, endTime: 0 },
+          p2: { active: false, endTime: 0 }
+        };
+      }
+      break;
+  }
+};
 
 function hex(buf) {
   return b4a.toString(buf, 'hex')
@@ -139,6 +161,7 @@ function kickBall(player) {
 }
 
 function update() {
+  if (!gameStarted) return;
   if (isHost) {
     if (keys.ArrowUp) player1.y -= 3
     if (keys.ArrowDown) player1.y += 3
@@ -314,4 +337,90 @@ function loop() {
   update()
   draw()
   requestAnimationFrame(loop)
+}
+
+let gameStarted = false;
+let playerReady = false;
+let opponentReady = false;
+
+const startBtn = document.getElementById('start-btn');
+const statusMsg = document.getElementById('status-msg');
+
+startBtn.addEventListener('click', () => {
+  if (!gameStarted) {
+    playerReady = true;
+    startBtn.disabled = true;
+    startBtn.innerText = "Waiting...";
+    statusMsg.innerText = 'Waiting for opponent...';
+    broadcast({ type: 'player-ready' });
+    checkStartConditions();
+  }
+});
+
+function checkStartConditions() {
+  if (playerReady && opponentReady) {
+    startCountdown();
+  }
+}
+
+function startCountdown() {
+  let count = 5;
+  statusMsg.innerText = `Starting in ${count}...`;
+  const countdown = setInterval(() => {
+    count--;
+    if (count > 0) {
+      statusMsg.innerText = `Starting in ${count}...`;
+    } else {
+      clearInterval(countdown);
+      statusMsg.innerText = 'Game started!';
+      startGame();
+    }
+  }, 1000);
+}
+
+function startGame() {
+  gameStarted = true;
+  enablePlayerMovement = true;
+  const matchDuration = 2 * 60 * 1000; // 2 minutes
+
+  let matchSeconds = 120;
+  const timerEl = document.getElementById('match-timer');
+
+  const matchInterval = setInterval(() => {
+    const min = Math.floor(matchSeconds / 60);
+    const sec = matchSeconds % 60;
+    timerEl.innerText = `${min}:${sec.toString().padStart(2, '0')}`;
+    matchSeconds--;
+
+    if (matchSeconds < 0) {
+      clearInterval(matchInterval);
+      statusMsg.innerText = 'Game Over';
+      enablePlayerMovement = false;
+      gameStarted = false;
+      timerEl.innerText = '';
+
+      const result = {
+        type: 'game-over',
+        timestamp: Date.now(),
+        playerId: playerId, // Use your identifier
+        score: yourScore,   // Add score tracking logic here if needed
+      };
+      broadcast(result);
+  }
+}, 1000);
+}
+
+// Sync readiness with opponent
+function broadcast(message) {
+  send(message);
+}
+
+if (socket) {
+  socket.addEventListener('message', (e) => {
+    const msg = JSON.parse(e.data);
+    if (msg.type === 'player-ready') {
+      opponentReady = true;
+      checkStartConditions();
+    }
+  });
 }
