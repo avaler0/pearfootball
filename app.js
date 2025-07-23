@@ -2,7 +2,9 @@ import { send, joinSwarm } from './swarm.js'
 import crypto from 'hypercore-crypto'
 import b4a from 'b4a'
 import { askUsername } from './username.js'
-import { ready } from './swarm.js'
+import Hypercore from 'hypercore'
+import Hyperbee from 'hyperbee'
+import path from 'path'
 
 
 const canvas = document.getElementById("gameCanvas")
@@ -26,14 +28,39 @@ let peerSocket = null
 let gameOverHandled = false
 const pitchImg = new Image()
 pitchImg.src = './pitch.png' 
-
-
 const player2Img = new Image()
 player2Img.src = './player2.png'
-
-
 let isHost = false
 let remoteKeyState = {}
+let core, bee
+
+
+async function initLeaderboard() {
+  const core = new Hypercore(path.join(Pear.config.storage, 'score'), Pear.config.args[0])
+
+  await core.ready()
+  bee = new Hyperbee(core, {
+    keyEncoding: 'utf-8',
+    valueEncoding: 'json'
+  })
+  await bee.ready()
+}
+
+await initLeaderboard()
+
+async function incrementWins(winnerName) {
+  if (!bee) return
+
+  const node = await bee.get(winnerName)
+  let wins = 0
+  if (node && node.value && typeof node.value.wins === 'number') {
+    wins = node.value.wins
+  }
+  wins += 1
+
+  await bee.put(winnerName, { wins })
+  console.log(`Updated wins for ${winnerName}: ${wins}`)
+}
 
 window.receivePeerMessage = (msg) => {
   // Host logic: receive remote input
@@ -552,7 +579,7 @@ function updateTimerDisplay() {
   timerEl.innerText = `${min}:${sec.toString().padStart(2, '0')}`;
 }
 
-function declareWinner(reason) {
+async function declareWinner(reason) {
   gameStarted = false
   enablePlayerMovement = false
 
@@ -567,6 +594,9 @@ function declareWinner(reason) {
   } else {
     winner = guestUsername
   }
+
+  await incrementWins(winner)
+
 
   const result = {
     type: 'game-over',
