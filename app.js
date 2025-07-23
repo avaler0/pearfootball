@@ -2,6 +2,8 @@ import { send, joinSwarm } from './swarm.js'
 import crypto from 'hypercore-crypto'
 import b4a from 'b4a'
 import { askUsername } from './username.js'
+import { ready } from './swarm.js'
+
 
 const canvas = document.getElementById("gameCanvas")
 const ctx = canvas.getContext("2d")
@@ -22,6 +24,8 @@ let duration = 0
 let enablePlayerMovement = false
 let peerSocket = null
 let gameOverHandled = false
+const pitchImg = new Image()
+pitchImg.src = './pitch.png' 
 
 
 const player2Img = new Image()
@@ -101,6 +105,10 @@ function bufferFromHex(str) {
 }
 
 document.getElementById("createBtn").onclick = async () => {
+
+
+  document.getElementById('start-controls').style.display = 'block';
+  document.getElementById('gameCanvas').style.display = 'block';
   const topicBuffer = crypto.randomBytes(32)
   isHost = true
 
@@ -121,6 +129,9 @@ document.getElementById("createBtn").onclick = async () => {
       gameKeyElement.innerText = `Game Key: ${topicHex}`
     }, 1500)
   }
+  const matchTimer = document.getElementById('match-timer')
+  matchTimer.style.display = 'block'
+  matchTimer.innerText = '2:00'
   askUsername((name) => {
     hostUsername = name
     console.log('Host username:', hostUsername)
@@ -129,9 +140,14 @@ document.getElementById("createBtn").onclick = async () => {
   scheduleNextPowerUp()
   loop()
 
+
 }
 
 document.getElementById("joinBtn").onclick = async () => {
+  document.getElementById('start-controls').style.display = 'block';
+  const matchTimer = document.getElementById('match-timer')
+  matchTimer.style.display = 'block'
+  matchTimer.innerText = '2:00'
   const input = document.getElementById("joinKeyInput").value.trim()
   if (!input) {
     gameKeyDisplay.textContent = "Please enter a game key."
@@ -145,6 +161,9 @@ document.getElementById("joinBtn").onclick = async () => {
     gameKeyDisplay.textContent = ""
     gameKeyElement.innerText = "" // don't show key for joiners
     loop()
+    const matchTimer = document.getElementById('match-timer')
+    matchTimer.style.display = 'block'
+    matchTimer.innerText = '2:00'
     askUsername((name) => {
       guestUsername = name
       console.log('Player username:', name)
@@ -157,8 +176,8 @@ document.getElementById("joinBtn").onclick = async () => {
 console.log(guestUsername)
 }
 
-let player1 = { x: 100, y: 100, w: 20, h: 20, score: 0 }
-let player2 = { x: 680, y: 400, w: 20, h: 20, score: 0 }
+let player1 = { x: 125, y: canvas.height / 2+25, w: 40, h: 40, score: 0 }
+let player2 = { x: 650, y: canvas.height / 2+25, w: 40, h: 40, score: 0 }
 let ball = { x: 395, y: 295, r: 8, vx: 0, vy: 0 }
 let powerUp = null
 let powerUpTimeout = null
@@ -171,8 +190,8 @@ let speedBoost = {
 
 const goalWidth = 10
 const goalHeight = 150
-const leftGoal = { x: 0, y: (canvas.height - goalHeight) / 2, w: goalWidth, h: goalHeight }
-const rightGoal = { x: canvas.width - goalWidth, y: (canvas.height - goalHeight) / 2, w: goalWidth, h: goalHeight }
+const leftGoal = { x: 0, y: (canvas.height - goalHeight) / 2 + 50, w: goalWidth, h: goalHeight }
+const rightGoal = { x: canvas.width - goalWidth, y: (canvas.height - goalHeight) / 2 +50, w: goalWidth, h: goalHeight }
 
 let keys = {
   ArrowUp: false, ArrowDown: false, ArrowLeft: false, ArrowRight: false
@@ -230,8 +249,10 @@ function update() {
 
     // Clamp player positions within canvas bounds
     function clampPlayer(p) {
+    const minY = 100;
+    const maxY = 560 // or lower if you want a buffer
     p.x = Math.max(0, Math.min(canvas.width - p.w, p.x))
-    p.y = Math.max(0, Math.min(canvas.height - p.h, p.y))
+    p.y = Math.max(minY, Math.min(maxY, p.y))
     }
   
     clampPlayer(player1)
@@ -252,9 +273,12 @@ function update() {
     ball.x = Math.max(ball.r, Math.min(canvas.width - ball.r, ball.x))
     }
   
-    if (ball.y - ball.r < 0 || ball.y + ball.r > canvas.height) {
-    ball.vy *= -1
-    ball.y = Math.max(ball.r, Math.min(canvas.height - ball.r, ball.y))
+    const minY = 100;     // same as player clamp minY
+    const maxY = 560+player1.h;     // same as player clamp maxY
+    
+    if (ball.y - ball.r < minY || ball.y + ball.r > maxY) {
+      ball.vy *= -1
+      ball.y = Math.max(minY + ball.r, Math.min(maxY - ball.r, ball.y))
     }
 
     function ballHits(p) {
@@ -354,6 +378,46 @@ if (!powerUp && Date.now() > nextPowerUpDelay) {
 function draw() {
   ctx.clearRect(0, 0, canvas.width, canvas.height)
 
+  const paddingTop = 100 // reserve 100px for title bar
+
+  if (pitchImg.complete) {
+    pitchImg.onload = () => {
+      const canvas = document.getElementById('gameCanvas');
+      canvas.style.display = 'none';
+    };
+    const canvasAspect = canvas.width / (canvas.height - paddingTop)
+    const imgAspect = pitchImg.width / pitchImg.height
+
+    if (imgAspect > canvasAspect) {
+      // Image is wider relative to canvas — scale by height and crop sides
+      // You can implement if needed, currently skipping
+    } else {
+      // Scale image to fit canvas width
+      const scale = canvas.width / pitchImg.width
+
+      // Calculate the source crop height based on available canvas height minus padding
+      const cropHeight = (canvas.height - paddingTop) / scale
+
+      // Calculate cropY to crop equally from top and bottom, keeping center aligned
+      let cropY = (pitchImg.height - cropHeight) / 2
+
+      // Clamp cropY to image boundaries
+      if (cropY < 0) cropY = 0
+      if (cropY + cropHeight > pitchImg.height) cropY = pitchImg.height - cropHeight
+
+      ctx.drawImage(
+        pitchImg,
+        0, cropY,                    // source x, y
+        pitchImg.width, cropHeight,  // source width, height
+        0, paddingTop,               // destination x, y (start drawing after padding)
+        canvas.width, canvas.height - paddingTop // destination width, height (fit below padding)
+      )
+    }
+  } else {
+    ctx.fillStyle = "#1e7f3f"
+    ctx.fillRect(0, paddingTop, canvas.width, canvas.height - paddingTop)
+  }
+
   ctx.fillStyle = "#f00"
   ctx.fillRect(leftGoal.x, leftGoal.y, leftGoal.w, leftGoal.h)
   ctx.fillRect(rightGoal.x, rightGoal.y, rightGoal.w, rightGoal.h)
@@ -382,16 +446,11 @@ function draw() {
     ctx.drawImage(boosterImg, powerUp.x - size/2, powerUp.y - size/2, size, size)
   }
 
-  /*ctx.fillStyle = "#fff"
-  ctx.font = "16px sans-serif"
-  ctx.fillText(`${hostUsername} ${player1.score}`, 20, 20)
-  ctx.fillText(`P2: ${player2.score}`, canvas.width - 80, 20)*/
-
   ctx.fillStyle = "#fff"
   ctx.font = "16px monospace"
   
-  const leftLabel = `${hostUsername || "You"}: ${player1.score}`
-  const rightLabel = `${guestUsername || "Opponent"}: ${player2.score}`
+  const leftLabel = `${hostUsername}: ${player1.score}`
+  const rightLabel = `${guestUsername}: ${player2.score}`
   
   ctx.fillText(leftLabel, 20, 40)
   ctx.fillText(rightLabel, canvas.width - ctx.measureText(rightLabel).width - 20, 40)
@@ -421,7 +480,7 @@ startBtn.addEventListener('click', () => {
   }
 });
 
-function checkStartConditions() {
+ function checkStartConditions() {
   if (playerReady && opponentReady) {
     startCountdown();
   }

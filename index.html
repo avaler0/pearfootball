@@ -38,13 +38,19 @@
     canvas {
       display: block;
       margin: 0 auto;
-      background: black;
+      background: transparent;
     }
 
     #menu {
-      text-align: center;
-      padding: 25px;
-    }
+  position: fixed;      /* fixed to viewport */
+  top: 50%;             /* halfway down */
+  left: 50%;            /* halfway across */
+  transform: translate(-50%, -50%); /* shift up-left by half of own size */
+  text-align: center;
+  padding: 25px;
+  background: rgba(0,0,0,0.5); /* optional: semi-transparent background */
+  border-radius: 10px;           /* optional: rounded corners */
+}
 
     #menu input {
       padding: 6px;
@@ -85,8 +91,10 @@
     <div id="gameKeyDisplay"></div>
   </div>
   <div id="hud" style="position: absolute; top: 10px; left: 50%; transform: translateX(-50%); color: white; font-family: monospace; font-size: 18px;">
-    <div id="match-timer">2:00</div>
-  </div>
+
+    <div id="match-timer" style="display: none;">2:00</div>
+  </div>  
+
 
   <canvas id="gameCanvas" width="800" height="600"></canvas>
   <div id="gameKey" title="Click to copy game key"></div>
@@ -133,6 +141,9 @@
     padding: 4px 10px;
     border-radius: 6px;
   }
+  #start-controls {
+  display: none;
+}
   </style>
 
   <script type="module" src="./app.js"></script>

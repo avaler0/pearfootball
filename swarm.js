@@ -58,3 +58,10 @@ export function send(msg) {
     peerSocket.write(JSON.stringify(msg))
   }
 }
+
+export async function ready() {
+  if (swarm.connections.size > 0) {
+    return // already have connections, so considered ready
+  }
+  await new Promise(resolve => swarm.once('ready', resolve))
+}
