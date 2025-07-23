@@ -44,6 +44,10 @@ swarm.on('connection', (socket, info) => {
   socket.on('close', () => {
     peerSocket = null
     console.log('Peer disconnected')
+
+    if (window.onPeerDisconnected) {
+      window.onPeerDisconnected()
+    }
   })
 
 

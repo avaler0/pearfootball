@@ -16,6 +16,13 @@ const player1Img = new Image()
 player1Img.src = './player1.png'
 let hostUsername = ''
 let guestUsername = ''
+let remaining = 0
+let matchInterval = null
+let duration = 0
+let enablePlayerMovement = false
+let peerSocket = null
+let gameOverHandled = false
+
 
 const player2Img = new Image()
 player2Img.src = './player2.png'
@@ -38,19 +45,30 @@ window.receivePeerMessage = (msg) => {
       checkStartConditions();
       break;
 
-    case 'game-over':
-      statusMsg.innerText = 'Game Over';
-      enablePlayerMovement = false;
-      gameStarted = false;
-      document.getElementById('match-timer').innerText = '';
-      break;
-
     case 'username':
       if (msg.guestUsername) guestUsername = msg.guestUsername; // Update guest username
       if (msg.hostUsername) hostUsername = msg.hostUsername;    // Update host username
       console.log('Guest username updated:', guestUsername); // Debugging log
       console.log('Host username updated:', hostUsername); // Debugging log
       break;
+
+      case 'game-over':
+        if (gameOverHandled) break;
+        gameOverHandled = true
+        gameStarted = false
+        enablePlayerMovement = false
+        document.getElementById('match-timer').innerText = ''
+
+        if (msg.reason === 'opponent-left') {
+          statusMsg.innerText = 'Opponent left — you win!'
+        } else if (msg.winner === 'draw') {
+          statusMsg.innerText = 'Draw! Overtime...'
+          setTimeout(() => startGame(true), 2000)
+          return
+        } else {
+          statusMsg.innerText = `Game Over. Winner: ${msg.winner}`
+        }
+        break;
 
     default:
       // Sync state from host if not host
@@ -68,6 +86,12 @@ window.receivePeerMessage = (msg) => {
   }
 };
 
+window.onPeerDisconnected = () => {
+  if (!gameOverHandled) {
+    receivePeerMessage({ type: 'game-over', reason: 'opponent-left' })
+  }
+}
+
 function hex(buf) {
   return b4a.toString(buf, 'hex')
 }
@@ -81,6 +105,7 @@ document.getElementById("createBtn").onclick = async () => {
   isHost = true
 
   await joinSwarm(topicBuffer, (socket,info) => {
+    peerSocket = socket
     if (hostUsername) {
       socket.write(JSON.stringify({ type: 'username', hostUsername }))
       console.log('[HOST] Sent hostUsername to guest:', hostUsername)
@@ -114,7 +139,8 @@ document.getElementById("joinBtn").onclick = async () => {
   } 
   try {
     const topicBuffer = bufferFromHex(input)
-    await joinSwarm(topicBuffer)
+    await joinSwarm(topicBuffer, (socket, info) => {
+      peerSocket = socket})
     menu.style.display = "none"
     gameKeyDisplay.textContent = ""
     gameKeyElement.innerText = "" // don't show key for joiners
@@ -363,8 +389,12 @@ function draw() {
 
   ctx.fillStyle = "#fff"
   ctx.font = "16px monospace"
-  ctx.fillText(hostUsername || "Host", 20, 40)
-  ctx.fillText(guestUsername || "Guest", canvas.width - 150, 40)
+  
+  const leftLabel = `${hostUsername || "You"}: ${player1.score}`
+  const rightLabel = `${guestUsername || "Opponent"}: ${player2.score}`
+  
+  ctx.fillText(leftLabel, 20, 40)
+  ctx.fillText(rightLabel, canvas.width - ctx.measureText(rightLabel).width - 20, 40)
 }
 
 function loop() {
@@ -406,42 +436,91 @@ function startCountdown() {
       statusMsg.innerText = `Starting in ${count}...`;
     } else {
       clearInterval(countdown);
+      console.log('Game started!!')
       statusMsg.innerText = 'Game started!';
       startGame();
     }
   }, 1000);
 }
 
-function startGame() {
+function startGame(overtime = false) {
   gameStarted = true;
   enablePlayerMovement = true;
-  const matchDuration = 2 * 60 * 1000; // 2 minutes
+  //set duration and time remaining
+  duration = overtime ? 30 * 1000 : 0.5 * 60 * 1000
+  remaining = duration / 1000
 
-  let matchSeconds = 120;
-  const timerEl = document.getElementById('match-timer');
+  const timerEl = document.getElementById('match-timer')
+  timerEl.style.display = 'block';
 
-  const matchInterval = setInterval(() => {
-    const min = Math.floor(matchSeconds / 60);
-    const sec = matchSeconds % 60;
+  if (matchInterval) clearInterval(matchInterval); // clear previous interval if needed
+
+  matchInterval = setInterval(() => {
+    const min = Math.floor(remaining / 60);
+    const sec = remaining % 60;
     timerEl.innerText = `${min}:${sec.toString().padStart(2, '0')}`;
-    matchSeconds--;
 
-    if (matchSeconds < 0) {
+    if (remaining === 0) {
       clearInterval(matchInterval);
-      statusMsg.innerText = 'Game Over';
-      enablePlayerMovement = false;
-      gameStarted = false;
-      timerEl.innerText = '';
 
-      const result = {
-        type: 'game-over',
-        timestamp: Date.now(),
-        playerId: playerId, // Use your identifier
-        score: yourScore,   // Add score tracking logic here if needed
-      };
-      broadcast(result);
+      console.log('is there a peer socket?', peerSocket)
+      if (!peerSocket) {
+        declareWinner('opponent-left');
+        return;
+      }
+
+      if (player1.score === player2.score) {
+        console.log('[GAME] Draw — starting overtime');
+        statusMsg.innerText = 'Draw! Overtime starting...';
+        setTimeout(() => startGame(true), 2000); // start overtime
+      } else {
+        declareWinner('time-up');
+      }
+
+      return; // stop here
+    }
+
+    remaining--; // decrement after check
+  }, 1000);
+}
+
+function updateTimerDisplay() {
+  const timerEl = document.getElementById('match-timer');
+  if (!timerEl) return;
+
+  const min = Math.floor(remaining / 60);
+  const sec = Math.floor(remaining % 60);
+  timerEl.innerText = `${min}:${sec.toString().padStart(2, '0')}`;
+}
+
+function declareWinner(reason) {
+  gameStarted = false
+  enablePlayerMovement = false
+
+  let winner = 'draw'
+
+  if (player1.score === player2.score) {
+    winner = 'draw'
+  } else if (reason === 'opponent-left') {
+    winner = isHost ? hostUsername : guestUsername
+  } else if (player1.score > player2.score) {
+    winner = hostUsername
+  } else {
+    winner = guestUsername
   }
-}, 1000);
+
+  const result = {
+    type: 'game-over',
+    reason,
+    winner,
+    scores: {
+      [hostUsername]: player1.score,
+      [guestUsername]: player2.score
+    }
+  }
+
+  statusMsg.innerText = `Game Over. ${winner === 'draw' ? 'Draw!' : `Winner: ${winner}`}`
+  send(result)
 }
 
 // Sync readiness with opponent

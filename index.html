@@ -84,6 +84,9 @@
     <button id="joinBtn">Join Game</button>
     <div id="gameKeyDisplay"></div>
   </div>
+  <div id="hud" style="position: absolute; top: 10px; left: 50%; transform: translateX(-50%); color: white; font-family: monospace; font-size: 18px;">
+    <div id="match-timer">2:00</div>
+  </div>
 
   <canvas id="gameCanvas" width="800" height="600"></canvas>
   <div id="gameKey" title="Click to copy game key"></div>
@@ -92,7 +95,6 @@
     <button id="start-btn">Start Game</button>
     <div id="status-msg" style="margin-top: 5px; font-weight: bold;"></div>
   </div>
-  <div id="match-timer" style="margin-top:5px; font-size: 1.2em;"></div>
 
   <div id="username-modal" class="modal">
     <div class="modal-content">
@@ -118,6 +120,18 @@
     width: 300px;
     margin: 20% auto;
     text-align: center;
+  }
+  #hud {
+    position: absolute;
+    top: 10px;
+    left: 50%;
+    transform: translateX(-50%);
+    color: white;
+    font-family: monospace;
+    font-size: 18px;
+    background: rgba(0, 0, 0, 0.4);
+    padding: 4px 10px;
+    border-radius: 6px;
   }
   </style>
 
