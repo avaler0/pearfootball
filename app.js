@@ -1,6 +1,7 @@
 import { send, joinSwarm } from './swarm.js'
 import crypto from 'hypercore-crypto'
 import b4a from 'b4a'
+import { askUsername } from './username.js'
 
 const canvas = document.getElementById("gameCanvas")
 const ctx = canvas.getContext("2d")
@@ -82,6 +83,8 @@ document.getElementById("createBtn").onclick = async () => {
   }
   scheduleNextPowerUp()
   loop()
+  askUsername((name) => {
+    console.log('Host username:', name)})
 }
 
 document.getElementById("joinBtn").onclick = async () => {
@@ -89,7 +92,7 @@ document.getElementById("joinBtn").onclick = async () => {
   if (!input) {
     gameKeyDisplay.textContent = "Please enter a game key."
     return
-  }
+  } 
   try {
     const topicBuffer = bufferFromHex(input)
     await joinSwarm(topicBuffer)
@@ -97,6 +100,8 @@ document.getElementById("joinBtn").onclick = async () => {
     gameKeyDisplay.textContent = ""
     gameKeyElement.innerText = "" // don't show key for joiners
     loop()
+    askUsername((name) => {
+      console.log('Player username:', name)})
   } catch {
     gameKeyDisplay.textContent = "Invalid game key format."
   }
@@ -415,7 +420,7 @@ function broadcast(message) {
   send(message);
 }
 
-if (socket) {
+/*if (socket) {
   socket.addEventListener('message', (e) => {
     const msg = JSON.parse(e.data);
     if (msg.type === 'player-ready') {
@@ -423,4 +428,4 @@ if (socket) {
       checkStartConditions();
     }
   });
-}
+}*/

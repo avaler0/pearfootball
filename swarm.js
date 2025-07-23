@@ -13,7 +13,18 @@ export async function joinSwarm(topicBuffer) {
 }
 
 swarm.on('connection', (socket, info) => {
-  peerSocket = socket
+  //const name = b4a.toString(info.remotePublicKey, 'hex')
+  //console.log('Connected to peer:', name)
+  console.log(info)
+  console.log(info.publicKey)
+  const name = b4a.toString(info.publicKey, 'hex')
+  console.log('Connected to peer:', name)
+  peerSocket = socket 
+  console.log(socket)
+  const socketname = b4a.toString(socket.remotePublicKey, 'hex')
+  console.log('Connected to peer:', socketname)
+
+
 
   socket.on('data', (data) => {
     try {
@@ -29,7 +40,7 @@ swarm.on('connection', (socket, info) => {
     console.log('Peer disconnected')
   })
 
-  console.log('Connected to peer:', info.peer)
+
 })
 
 export function send(msg) {
