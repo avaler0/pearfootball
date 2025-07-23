@@ -4,10 +4,12 @@ import b4a from 'b4a'
 
 const swarm = new Hyperswarm()
 let peerSocket = null
+let onPeerConnected = null
 
 Pear.teardown(() => swarm.destroy())
 
-export async function joinSwarm(topicBuffer) {
+export async function joinSwarm(topicBuffer, peerCallback = null) {
+  onPeerConnected = peerCallback
   const discovery = swarm.join(topicBuffer, { client: true, server: true })
   await discovery.flushed()
 }
@@ -15,6 +17,7 @@ export async function joinSwarm(topicBuffer) {
 swarm.on('connection', (socket, info) => {
   //const name = b4a.toString(info.remotePublicKey, 'hex')
   //console.log('Connected to peer:', name)
+
   console.log(info)
   console.log(info.publicKey)
   const name = b4a.toString(info.publicKey, 'hex')
@@ -23,6 +26,9 @@ swarm.on('connection', (socket, info) => {
   console.log(socket)
   const socketname = b4a.toString(socket.remotePublicKey, 'hex')
   console.log('Connected to peer:', socketname)
+  if (onPeerConnected) {
+    onPeerConnected(socket, info)
+  }
 
 
 

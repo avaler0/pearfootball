@@ -14,6 +14,8 @@ const boosterImg = new Image()
 boosterImg.src = './pear.svg'  // path relative to index.html or your server root
 const player1Img = new Image()
 player1Img.src = './player1.png'
+let hostUsername = ''
+let guestUsername = ''
 
 const player2Img = new Image()
 player2Img.src = './player2.png'
@@ -43,6 +45,13 @@ window.receivePeerMessage = (msg) => {
       document.getElementById('match-timer').innerText = '';
       break;
 
+    case 'username':
+      if (msg.guestUsername) guestUsername = msg.guestUsername; // Update guest username
+      if (msg.hostUsername) hostUsername = msg.hostUsername;    // Update host username
+      console.log('Guest username updated:', guestUsername); // Debugging log
+      console.log('Host username updated:', hostUsername); // Debugging log
+      break;
+
     default:
       // Sync state from host if not host
       if (!isHost && msg.p1 && msg.p2 && msg.ball) {
@@ -70,7 +79,13 @@ function bufferFromHex(str) {
 document.getElementById("createBtn").onclick = async () => {
   const topicBuffer = crypto.randomBytes(32)
   isHost = true
-  await joinSwarm(topicBuffer)
+
+  await joinSwarm(topicBuffer, (socket,info) => {
+    if (hostUsername) {
+      socket.write(JSON.stringify({ type: 'username', hostUsername }))
+      console.log('[HOST] Sent hostUsername to guest:', hostUsername)
+    }
+  })
   menu.style.display = "none"
   const topicHex = hex(topicBuffer)
   gameKeyElement.innerText = `Game Key: ${topicHex}`
@@ -81,10 +96,14 @@ document.getElementById("createBtn").onclick = async () => {
       gameKeyElement.innerText = `Game Key: ${topicHex}`
     }, 1500)
   }
+  askUsername((name) => {
+    hostUsername = name
+    console.log('Host username:', hostUsername)
+    console.log('sending host username:', hostUsername)
+  })
   scheduleNextPowerUp()
   loop()
-  askUsername((name) => {
-    console.log('Host username:', name)})
+
 }
 
 document.getElementById("joinBtn").onclick = async () => {
@@ -101,10 +120,15 @@ document.getElementById("joinBtn").onclick = async () => {
     gameKeyElement.innerText = "" // don't show key for joiners
     loop()
     askUsername((name) => {
-      console.log('Player username:', name)})
+      guestUsername = name
+      console.log('Player username:', name)
+      console.log('sending guest username:', guestUsername)
+      send({ type: 'username', guestUsername: guestUsername }); // Send guest username to host
+    })
   } catch {
     gameKeyDisplay.textContent = "Invalid game key format."
   }
+console.log(guestUsername)
 }
 
 let player1 = { x: 100, y: 100, w: 20, h: 20, score: 0 }
@@ -332,10 +356,15 @@ function draw() {
     ctx.drawImage(boosterImg, powerUp.x - size/2, powerUp.y - size/2, size, size)
   }
 
-  ctx.fillStyle = "#fff"
+  /*ctx.fillStyle = "#fff"
   ctx.font = "16px sans-serif"
-  ctx.fillText(`P1: ${player1.score}`, 20, 20)
-  ctx.fillText(`P2: ${player2.score}`, canvas.width - 80, 20)
+  ctx.fillText(`${hostUsername} ${player1.score}`, 20, 20)
+  ctx.fillText(`P2: ${player2.score}`, canvas.width - 80, 20)*/
+
+  ctx.fillStyle = "#fff"
+  ctx.font = "16px monospace"
+  ctx.fillText(hostUsername || "Host", 20, 40)
+  ctx.fillText(guestUsername || "Guest", canvas.width - 150, 40)
 }
 
 function loop() {
